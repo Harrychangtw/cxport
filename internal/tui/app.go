@@ -216,6 +216,19 @@ func (m Model) updateMain(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selCursor++
 			}
 			return m, nil
+		default:
+			// Auto-open picker when user types a printable character
+			if msg.Type == tea.KeyRunes && len(msg.Runes) > 0 {
+				typed := string(msg.Runes)
+				m.currentView = viewPicker
+				m.pickerInput.SetValue(typed)
+				m.pickerInput.Focus()
+				// Move cursor to end of input
+				m.pickerInput, _ = m.pickerInput.Update(msg)
+				m.pickerCursor = 0
+				m.updatePickerMatches()
+				return m, textinput.Blink
+			}
 		}
 	}
 	return m, nil
@@ -262,7 +275,18 @@ func (m Model) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 				match := m.pickerMatches[m.pickerCursor]
 				entry := m.allFiles[match.Index]
 				path := entry.Path
-				if !m.selectedSet[path] {
+				if m.selectedSet[path] {
+					// Deselect
+					delete(m.selectedSet, path)
+					for i, p := range m.selected {
+						if p == path {
+							m.selected = append(m.selected[:i], m.selected[i+1:]...)
+							break
+						}
+					}
+					m.statusMsg = fmt.Sprintf("Removed: %s", path)
+				} else {
+					// Select
 					m.selected = append(m.selected, path)
 					m.selectedSet[path] = true
 					m.statusMsg = fmt.Sprintf("Added: %s", path)
@@ -597,7 +621,7 @@ func (m Model) viewPicker() string {
 
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  ─────────────────────────────\n"))
-	hints := helpKeyStyle.Render("enter") + helpDescStyle.Render(" add file") +
+	hints := helpKeyStyle.Render("enter") + helpDescStyle.Render(" toggle file") +
 		dimStyle.Render("  ·  ") +
 		helpKeyStyle.Render("tab") + helpDescStyle.Render(" add dir") +
 		dimStyle.Render("  ·  ") +
@@ -737,7 +761,7 @@ func (m Model) viewHelp() string {
 			[]struct{ key, desc string }{
 				{"type", "Fuzzy search files"},
 				{"↑/↓", "Navigate results"},
-				{"enter", "Add file to selection"},
+				{"enter", "Toggle file selection (add/remove)"},
 				{"tab", "Add entire parent directory"},
 				{"esc", "Return to main view"},
 			},
