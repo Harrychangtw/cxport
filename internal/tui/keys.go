@@ -50,8 +50,8 @@ var keys = keyMap{
 		key.WithHelp("enter", "select"),
 	),
 	Back: key.NewBinding(
-		key.WithKeys("esc"),
-		key.WithHelp("esc", "back"),
+		key.WithKeys("esc", "left"),
+		key.WithHelp("esc/←", "back"),
 	),
 	Up: key.NewBinding(
 		key.WithKeys("up", "k"),

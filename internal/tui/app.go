@@ -641,7 +641,19 @@ func (m Model) viewPicker() string {
 				rendered = accentStyle.Render("@ ") + headerStyle.Render(name)
 				preset := m.cfg.Presets[name]
 				rendered += dimStyle.Render(fmt.Sprintf(" (%d paths)", len(preset.Paths)))
-				marker = "  "
+				// Check if all preset paths are selected
+				allSelected := len(preset.Paths) > 0
+				for _, p := range preset.Paths {
+					if !m.selectedSet[p] {
+						allSelected = false
+						break
+					}
+				}
+				if allSelected {
+					marker = selectedStyle.Render("✓ ")
+				} else {
+					marker = "  "
+				}
 				icon = ""
 			} else {
 				// File entry
@@ -722,8 +734,19 @@ func (m Model) viewPresets() string {
 			}
 
 			preset := m.cfg.Presets[name]
+			allSelected := len(preset.Paths) > 0
+			for _, p := range preset.Paths {
+				if !m.selectedSet[p] {
+					allSelected = false
+					break
+				}
+			}
+			check := "  "
+			if allSelected {
+				check = selectedStyle.Render("✓ ")
+			}
 			count := dimStyle.Render(fmt.Sprintf(" (%d paths)", len(preset.Paths)))
-			b.WriteString(fmt.Sprintf("  %s%s%s\n", cursor, style.Render(name), count))
+			b.WriteString(fmt.Sprintf("  %s%s%s%s\n", cursor, check, style.Render(name), count))
 		}
 	}
 
