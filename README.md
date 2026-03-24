@@ -16,13 +16,13 @@ Instead of manually editing scripts or running agents that burn tokens reading f
 ## Install
 
 ```bash
-go install github.com/zhangqiwei/cxport@latest
+go install github.com/Harrychangtw/cxport@latest
 ```
 
 Or build from source:
 
 ```bash
-git clone https://github.com/zhangqiwei/cxport.git
+git clone https://github.com/Harrychangtw/cxport.git
 cd cxport
 go build -o cxport .
 ```

@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/zhangqiwei/cxport/internal/tui"
+	"github.com/Harrychangtw/cxport/internal/tui"
 )
 
 var version = "dev"
