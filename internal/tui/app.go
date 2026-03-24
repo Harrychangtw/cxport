@@ -46,9 +46,11 @@ type Model struct {
 	selCursor    int
 
 	// Picker
-	pickerInput   textinput.Model
-	pickerMatches []fuzzy.Match
-	pickerCursor  int
+	pickerInput      textinput.Model
+	pickerMatches    []fuzzy.Match
+	pickerCursor     int
+	pickerSearchStrs []string // combined: "@presetName" entries first, then file paths
+	pickerPresetLen  int      // number of preset entries at the front of pickerSearchStrs
 
 	// Presets
 	cfg          config.Config
@@ -164,6 +166,7 @@ func (m Model) updateMain(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.pickerInput.SetValue("")
 			m.pickerInput.Focus()
 			m.pickerCursor = 0
+			m.rebuildPickerSearchStrs()
 			m.updatePickerMatches()
 			return m, textinput.Blink
 		case key.Matches(msg, keys.Presets):
@@ -226,6 +229,7 @@ func (m Model) updateMain(msg tea.Msg) (tea.Model, tea.Cmd) {
 				// Move cursor to end of input
 				m.pickerInput, _ = m.pickerInput.Update(msg)
 				m.pickerCursor = 0
+				m.rebuildPickerSearchStrs()
 				m.updatePickerMatches()
 				return m, textinput.Blink
 			}
@@ -236,23 +240,39 @@ func (m Model) updateMain(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // --- Picker view ---
 
+func (m *Model) rebuildPickerSearchStrs() {
+	names := m.cfg.GetPresetNames()
+	sort.Strings(names)
+	m.pickerPresetLen = len(names)
+	strs := make([]string, 0, len(names)+len(m.fileStrs))
+	for _, n := range names {
+		strs = append(strs, "@"+n)
+	}
+	strs = append(strs, m.fileStrs...)
+	m.pickerSearchStrs = strs
+}
+
 func (m *Model) updatePickerMatches() {
+	if len(m.pickerSearchStrs) == 0 {
+		m.rebuildPickerSearchStrs()
+	}
 	query := m.pickerInput.Value()
 	if query == "" {
-		// Show all files (limited)
-		limit := 20
-		if len(m.fileStrs) < limit {
-			limit = len(m.fileStrs)
+		// Show all presets first, then up to 20 files
+		fileLimit := 20
+		if len(m.fileStrs) < fileLimit {
+			fileLimit = len(m.fileStrs)
 		}
-		m.pickerMatches = make([]fuzzy.Match, limit)
-		for i := 0; i < limit; i++ {
+		total := m.pickerPresetLen + fileLimit
+		m.pickerMatches = make([]fuzzy.Match, total)
+		for i := 0; i < total; i++ {
 			m.pickerMatches[i] = fuzzy.Match{
-				Str:   m.fileStrs[i],
+				Str:   m.pickerSearchStrs[i],
 				Index: i,
 			}
 		}
 	} else {
-		m.pickerMatches = fuzzy.Find(query, m.fileStrs)
+		m.pickerMatches = fuzzy.Find(query, m.pickerSearchStrs)
 		if len(m.pickerMatches) > 30 {
 			m.pickerMatches = m.pickerMatches[:30]
 		}
@@ -273,23 +293,37 @@ func (m Model) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case msg.Type == tea.KeyEnter:
 			if len(m.pickerMatches) > 0 && m.pickerCursor < len(m.pickerMatches) {
 				match := m.pickerMatches[m.pickerCursor]
-				entry := m.allFiles[match.Index]
-				path := entry.Path
-				if m.selectedSet[path] {
-					// Deselect
-					delete(m.selectedSet, path)
-					for i, p := range m.selected {
-						if p == path {
-							m.selected = append(m.selected[:i], m.selected[i+1:]...)
-							break
+				if match.Index < m.pickerPresetLen {
+					// Preset entry — append all its paths
+					name := strings.TrimPrefix(match.Str, "@")
+					preset := m.cfg.Presets[name]
+					added := 0
+					for _, p := range preset.Paths {
+						if !m.selectedSet[p] {
+							m.selected = append(m.selected, p)
+							m.selectedSet[p] = true
+							added++
 						}
 					}
-					m.statusMsg = fmt.Sprintf("Removed: %s", path)
+					m.statusMsg = fmt.Sprintf("Added preset: %s (%d new)", name, added)
 				} else {
-					// Select
-					m.selected = append(m.selected, path)
-					m.selectedSet[path] = true
-					m.statusMsg = fmt.Sprintf("Added: %s", path)
+					// File entry — toggle
+					entry := m.allFiles[match.Index-m.pickerPresetLen]
+					path := entry.Path
+					if m.selectedSet[path] {
+						delete(m.selectedSet, path)
+						for i, p := range m.selected {
+							if p == path {
+								m.selected = append(m.selected[:i], m.selected[i+1:]...)
+								break
+							}
+						}
+						m.statusMsg = fmt.Sprintf("Removed: %s", path)
+					} else {
+						m.selected = append(m.selected, path)
+						m.selectedSet[path] = true
+						m.statusMsg = fmt.Sprintf("Added: %s", path)
+					}
 				}
 			}
 			return m, nil
@@ -304,15 +338,17 @@ func (m Model) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			return m, nil
 		case key.Matches(msg, keys.Tab):
-			// Add entire directory of current match
+			// Add entire directory of current match (files only)
 			if len(m.pickerMatches) > 0 && m.pickerCursor < len(m.pickerMatches) {
 				match := m.pickerMatches[m.pickerCursor]
-				entry := m.allFiles[match.Index]
-				dir := filepath.Dir(entry.Path)
-				if !m.selectedSet[dir] {
-					m.selected = append(m.selected, dir)
-					m.selectedSet[dir] = true
-					m.statusMsg = fmt.Sprintf("Added directory: %s", dir)
+				if match.Index >= m.pickerPresetLen {
+					entry := m.allFiles[match.Index-m.pickerPresetLen]
+					dir := filepath.Dir(entry.Path)
+					if !m.selectedSet[dir] {
+						m.selected = append(m.selected, dir)
+						m.selectedSet[dir] = true
+						m.statusMsg = fmt.Sprintf("Added directory: %s", dir)
+					}
 				}
 			}
 			return m, nil
@@ -370,6 +406,7 @@ func (m Model) updatePresets(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = config.Save(m.cfg)
 				m.presetNames = m.cfg.GetPresetNames()
 				sort.Strings(m.presetNames)
+				m.rebuildPickerSearchStrs()
 				if m.presetCursor >= len(m.presetNames) && m.presetCursor > 0 {
 					m.presetCursor--
 				}
@@ -408,6 +445,7 @@ func (m Model) updatePresetSave(msg tea.Msg) (tea.Model, tea.Cmd) {
 				_ = config.Save(m.cfg)
 				m.presetNames = m.cfg.GetPresetNames()
 				sort.Strings(m.presetNames)
+				m.rebuildPickerSearchStrs()
 				m.statusMsg = fmt.Sprintf("Saved preset: %s", name)
 				m.currentView = viewMain
 				m.presetNameInput.Blur()
@@ -591,25 +629,31 @@ func (m Model) viewPicker() string {
 
 		for i := start; i < end; i++ {
 			match := m.pickerMatches[i]
-			path := match.Str
 			cursor := "  "
 			if i == m.pickerCursor {
 				cursor = cursorStyle.Render("▸ ")
 			}
 
-			// Highlight matched characters
-			rendered := highlightMatch(path, match.MatchedIndexes)
-
-			// Show if already selected
-			marker := "  "
-			if m.selectedSet[path] {
-				marker = selectedStyle.Render("✓ ")
-			}
-
-			// Show dir/file icon
-			icon := dimStyle.Render("· ")
-			if m.allFiles[match.Index].IsDir {
-				icon = dirStyle.Render("■ ")
+			var marker, icon, rendered string
+			if match.Index < m.pickerPresetLen {
+				// Preset entry
+				name := strings.TrimPrefix(match.Str, "@")
+				rendered = accentStyle.Render("@ ") + headerStyle.Render(name)
+				preset := m.cfg.Presets[name]
+				rendered += dimStyle.Render(fmt.Sprintf(" (%d paths)", len(preset.Paths)))
+				marker = "  "
+				icon = ""
+			} else {
+				// File entry
+				rendered = highlightMatch(match.Str, match.MatchedIndexes)
+				marker = "  "
+				if m.selectedSet[match.Str] {
+					marker = selectedStyle.Render("✓ ")
+				}
+				icon = dimStyle.Render("· ")
+				if m.allFiles[match.Index-m.pickerPresetLen].IsDir {
+					icon = dirStyle.Render("■ ")
+				}
 			}
 
 			b.WriteString(fmt.Sprintf("  %s%s%s%s\n", cursor, marker, icon, rendered))
