@@ -296,7 +296,11 @@ func (m Model) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 	}
 
 	var cmd tea.Cmd
+	prevValue := m.pickerInput.Value()
 	m.pickerInput, cmd = m.pickerInput.Update(msg)
+	if m.pickerInput.Value() != prevValue {
+		m.pickerCursor = 0
+	}
 	m.updatePickerMatches()
 	return m, cmd
 }
@@ -577,7 +581,13 @@ func (m Model) viewPicker() string {
 				marker = selectedStyle.Render("✓ ")
 			}
 
-			b.WriteString(fmt.Sprintf("  %s%s%s\n", cursor, marker, rendered))
+			// Show dir/file icon
+			icon := dimStyle.Render("· ")
+			if m.allFiles[match.Index].IsDir {
+				icon = dirStyle.Render("■ ")
+			}
+
+			b.WriteString(fmt.Sprintf("  %s%s%s%s\n", cursor, marker, icon, rendered))
 		}
 
 		if len(m.pickerMatches) > maxShow {
