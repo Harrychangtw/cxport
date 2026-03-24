@@ -270,7 +270,7 @@ func (m Model) updatePicker(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.currentView = viewMain
 			m.pickerInput.Blur()
 			return m, nil
-		case key.Matches(msg, keys.Enter):
+		case msg.Type == tea.KeyEnter:
 			if len(m.pickerMatches) > 0 && m.pickerCursor < len(m.pickerMatches) {
 				match := m.pickerMatches[m.pickerCursor]
 				entry := m.allFiles[match.Index]
@@ -627,6 +627,10 @@ func (m Model) viewPicker() string {
 		dimStyle.Render("  ·  ") +
 		helpKeyStyle.Render("esc") + helpDescStyle.Render(" back")
 	b.WriteString("  " + hints + "\n")
+
+	if m.statusMsg != "" {
+		b.WriteString("\n  " + subtleStyle.Render(m.statusMsg) + "\n")
+	}
 
 	return b.String()
 }
