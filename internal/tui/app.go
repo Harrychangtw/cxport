@@ -351,14 +351,15 @@ func (m Model) updatePresets(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(m.presetNames) > 0 && m.presetCursor < len(m.presetNames) {
 				name := m.presetNames[m.presetCursor]
 				preset := m.cfg.Presets[name]
-				m.selected = make([]string, len(preset.Paths))
-				copy(m.selected, preset.Paths)
-				m.selectedSet = make(map[string]bool)
-				for _, p := range m.selected {
-					m.selectedSet[p] = true
+				added := 0
+				for _, p := range preset.Paths {
+					if !m.selectedSet[p] {
+						m.selected = append(m.selected, p)
+						m.selectedSet[p] = true
+						added++
+					}
 				}
-				m.selCursor = 0
-				m.statusMsg = fmt.Sprintf("Loaded preset: %s", name)
+				m.statusMsg = fmt.Sprintf("Added preset: %s (%d new)", name, added)
 				m.currentView = viewMain
 			}
 			return m, nil
@@ -684,7 +685,7 @@ func (m Model) viewPresets() string {
 
 	b.WriteString("\n")
 	b.WriteString(dimStyle.Render("  ─────────────────────────────\n"))
-	hints := helpKeyStyle.Render("enter") + helpDescStyle.Render(" load") +
+	hints := helpKeyStyle.Render("enter") + helpDescStyle.Render(" append") +
 		dimStyle.Render("  ·  ") +
 		helpKeyStyle.Render("s") + helpDescStyle.Render(" save current") +
 		dimStyle.Render("  ·  ") +
@@ -773,7 +774,7 @@ func (m Model) viewHelp() string {
 		{
 			"Presets",
 			[]struct{ key, desc string }{
-				{"enter", "Load preset (replaces selection)"},
+				{"enter", "Append preset to current selection"},
 				{"s", "Save current selection as preset"},
 				{"d", "Delete preset"},
 				{"esc", "Return to main view"},
